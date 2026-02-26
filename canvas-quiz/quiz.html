@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz</title>
+</head>
+<body>
+  <div id="app">
+    <div id="loading-state"><p>Loading quiz&hellip;</p></div>
+    <div id="error-state" style="display:none">
+      <h2 id="error-title">Error</h2>
+      <p id="error-message"></p>
+    </div>
+    <div id="quiz-container" style="display:none"></div>
+  </div>
+
+  <script>
+  // ================================================================
+  // STATE
+  // ================================================================
+  const params      = new URLSearchParams(window.location.search);
+  const csvPath     = params.get('quiz');
+  let   quizData    = null;
+  let   attemptCount = 1;
+  const interacted  = {};   // keyed by question_id
+
+  // ================================================================
+  // UTILITIES
+  // ================================================================
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function showError(title, msg) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('quiz-container').style.display = 'none';
+    const box = document.getElementById('error-state');
+    box.style.display = '';
+    document.getElementById('error-title').textContent   = title;
+    document.getElementById('error-message').textContent = msg;
+  }
+
+  function showQuiz() {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('error-state').style.display   = 'none';
+    document.getElementById('quiz-container').style.display = '';
+  }
+
+  // ================================================================
+  // CSV PARSER  (Prompt 1)
+  // ================================================================
+  function parseCSV(rawText) {
+    const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const rows = [];
+    let currentRow = [], currentField = '', inQuotes = false, i = 0;
+    while (i < text.length) {
+      const ch = text[i], next = text[i + 1];
+      if (inQuotes) {
+        if (ch === '"' && next === '"') { currentField += '"'; i += 2; }
+        else if (ch === '"') { inQuotes = false; i++; }
+        else { currentField += ch; i++; }
+      } else {
+        if (ch === '"') { inQuotes = true; i++; }
+        else if (ch === ',') { currentRow.push(currentField.trim()); currentField = ''; i++; }
+        else if (ch === '\n') {
+          currentRow.push(currentField.trim());
+          if (currentRow.some(f => f !== '')) rows.push(currentRow);
+          currentRow = []; currentField = ''; i++;
+        } else { currentField += ch; i++; }
+      }
+    }
+    currentRow.push(currentField.trim());
+    if (currentRow.some(f => f !== '')) rows.push(currentRow);
+    if (rows.length === 0) return [];
+    const headers = rows[0].map(h => h.trim());
+    return rows.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, idx) => { obj[h] = (row[idx] !== undefined ? row[idx] : '').trim(); });
+      return obj;
+    });
+  }
+
+  // ================================================================
+  // DATA TRANSFORMATION  (Prompt 1)
+  // ================================================================
+  function buildQuiz(rows) {
+    if (!rows || rows.length === 0) throw new Error('No question data found in the CSV file.');
+    const first = rows[0];
+    const title       = (first.set_title       || 'Untitled Quiz').trim();
+    const description = (first.set_description || '').trim();
+    const questions = rows.map(row => {
+      const type = (row.type || '').trim();
+      const base = {
+        id:                (row.question_id       || '').trim(),
+        type,
+        text:              (row.question_text     || '').trim(),
+        feedbackCorrect:   (row.feedback_correct  || 'Correct!').trim(),
+        feedbackIncorrect: (row.feedback_incorrect || 'Review this topic and try again.').trim(),
+      };
+      if (type === 'MultiChoice') {
+        const options = [];
+        ['a','b','c','d'].forEach(l => {
+          const v = (row[`option_${l}`] || '').trim();
+          if (v) options.push({ label: l.toUpperCase(), text: v });
+        });
+        return { ...base, options,
+          correctOption:  (row.correct_option  || '').trim().toUpperCase(),
+          shuffleOptions: (row.shuffle_options || '').trim() === 'TRUE' };
+      }
+      if (type === 'FillBlank') {
+        const template   = (row.question_text || '').trim();
+        const blankCount = (template.match(/\{\{blank\}\}/g) || []).length;
+        const raw = (row.accepted_answers || '').trim();
+        const acceptedAnswers = raw
+          ? raw.split(';').map(g => g.split('|').map(a => a.trim()).filter(Boolean))
+          : [];
+        return { ...base, template, blankCount, acceptedAnswers,
+          caseSensitive: (row.case_sensitive || '').trim() === 'TRUE',
+          partialCredit: (row.partial_credit  || '').trim() === 'TRUE',
+          hint:          (row.hint            || '').trim() };
+      }
+      if (type === 'DragDrop') {
+        const items = (row.items || '').trim()
+          ? row.items.split('|').map(s => s.trim()).filter(Boolean) : [];
+        const correctOrder = (row.correct_order || '').trim()
+          ? row.correct_order.split('|').map(s => s.trim()).filter(Boolean) : [];
+        return { ...base, items, correctOrder };
+      }
+      return base;
+    });
+    return { title, description, questions };
+  }
+
+  // ================================================================
+  // VALIDATION  (Prompt 1)
+  // ================================================================
+  function validateQuiz(quiz) {
+    if (!quiz.questions || quiz.questions.length === 0)
+      throw new Error('This quiz has no questions.');
+    for (const q of quiz.questions) {
+      if (!q.id) throw new Error('A question is missing a question_id.');
+      if (!['MultiChoice','FillBlank','DragDrop'].includes(q.type))
+        throw new Error(`Question ${q.id}: invalid type "${q.type}".`);
+      if (!q.text) throw new Error(`Question ${q.id}: missing question_text.`);
+      if (q.type === 'MultiChoice') {
+        if (q.options.length < 2)
+          throw new Error(`Question ${q.id}: MultiChoice requires at least 2 options.`);
+        if (!['A','B','C','D'].includes(q.correctOption))
+          throw new Error(`Question ${q.id}: correct_option must be A, B, C, or D.`);
+        if (!q.options.find(o => o.label === q.correctOption))
+          throw new Error(`Question ${q.id}: correct_option "${q.correctOption}" has no matching option text.`);
+      }
+      if (q.type === 'FillBlank') {
+        if (q.blankCount === 0)
+          throw new Error(`Question ${q.id}: question_text must contain at least one {{blank}}.`);
+        if (q.acceptedAnswers.length !== q.blankCount)
+          throw new Error(`Question ${q.id}: accepted_answers count doesn't match blank count.`);
+      }
+      if (q.type === 'DragDrop') {
+        if (q.items.length < 2)
+          throw new Error(`Question ${q.id}: DragDrop requires at least 2 items.`);
+        if ([...q.items].sort().join('||') !== [...q.correctOrder].sort().join('||'))
+          throw new Error(`Question ${q.id}: items and correct_order must contain the same elements.`);
+      }
+    }
+  }
+
+  // ================================================================
+  // RENDER QUIZ
+  // ================================================================
+  function renderQuiz(quiz) {
+    const container = document.getElementById('quiz-container');
+    container.innerHTML = '';
+
+    const h1 = document.createElement('h1');
+    h1.textContent = quiz.title;
+    container.appendChild(h1);
+
+    if (quiz.description) {
+      const desc = document.createElement('p');
+      desc.textContent = quiz.description;
+      container.appendChild(desc);
+    }
+
+    const banner = document.createElement('div');
+    banner.id = 'score-banner';
+    banner.setAttribute('role', 'alert');
+    banner.style.display = 'none';
+    container.appendChild(banner);
+
+    const area = document.createElement('div');
+    area.id = 'questions-area';
+    quiz.questions.forEach(q => area.appendChild(renderQuestion(q)));
+    container.appendChild(area);
+
+    const prompt = document.createElement('p');
+    prompt.id = 'answer-prompt';
+    prompt.textContent = 'Answer all questions above to submit.';
+    container.appendChild(prompt);
+
+    const btnSubmit = document.createElement('button');
+    btnSubmit.id = 'btn-submit';
+    btnSubmit.setAttribute('aria-disabled', 'true');
+    btnSubmit.style.pointerEvents = 'none';
+    btnSubmit.textContent = 'Check My Answers';
+    btnSubmit.addEventListener('click', handleSubmit);
+    container.appendChild(btnSubmit);
+
+    const btnRetry = document.createElement('button');
+    btnRetry.id = 'btn-retry';
+    btnRetry.style.display = 'none';
+    btnRetry.textContent = 'Try Again';
+    btnRetry.addEventListener('click', handleRetry);
+    container.appendChild(btnRetry);
+  }
+
+  // ================================================================
+  // RENDER QUESTION  (returns DOM element)
+  // ================================================================
+  function renderQuestion(question) {
+    const card = document.createElement('div');
+    card.className = 'question-card';
+    card.dataset.questionId = question.id;
+
+    const qText = document.createElement('p');
+    qText.className = 'question-text';
+
+    if (question.type === 'FillBlank') {
+      // For FillBlank the question-text p holds the inline template + inputs
+      renderFillBlankInto(question, qText);
+    } else {
+      qText.textContent = question.text;
+    }
+    card.appendChild(qText);
+
+    if (question.type === 'MultiChoice') card.appendChild(renderMultiChoice(question));
+    else if (question.type === 'DragDrop')   card.appendChild(renderDragDrop(question));
+
+    const feedbackBox = document.createElement('div');
+    feedbackBox.className = 'feedback-box';
+    feedbackBox.style.display = 'none';
+    card.appendChild(feedbackBox);
+
+    return card;
+  }
+
+  // ================================================================
+  // RENDER MULTICHOICE
+  // ================================================================
+  function renderMultiChoice(question) {
+    const options  = question.shuffleOptions ? shuffle(question.options) : question.options;
+    const fieldset = document.createElement('fieldset');
+    const legend   = document.createElement('legend');
+    legend.textContent = question.text;
+    fieldset.appendChild(legend);
+
+    options.forEach(opt => {
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type  = 'radio';
+      input.name  = `q-${question.id}`;
+      input.value = opt.label;
+      input.addEventListener('change', () => {
+        interacted[question.id] = true;
+        checkAllInteracted();
+      });
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(` ${opt.text}`));
+      fieldset.appendChild(label);
+    });
+
+    return fieldset;
+  }
+
+  // ================================================================
+  // RENDER FILL-BLANK  (populates a container element inline)
+  // ================================================================
+  function renderFillBlankInto(question, container) {
+    const parts = question.template.split('{{blank}}');
+    const total  = parts.length - 1;
+    parts.forEach((part, i) => {
+      if (part) container.appendChild(document.createTextNode(part));
+      if (i < total) {
+        const accepted = question.acceptedAnswers[i] || [];
+        const maxLen   = accepted.length > 0 ? Math.max(...accepted.map(a => a.length)) : 10;
+        const input    = document.createElement('input');
+        input.type     = 'text';
+        input.className = 'blank-input';
+        input.setAttribute('aria-label', `Blank ${i + 1} of ${total}`);
+        input.size = maxLen + 2;
+        input.setAttribute('autocomplete',  'off');
+        input.setAttribute('autocorrect',   'off');
+        input.setAttribute('autocapitalize','off');
+        input.spellcheck = false;
+        input.addEventListener('input', () => {
+          const card      = input.closest('[data-question-id]');
+          const allInputs = card ? Array.from(card.querySelectorAll('.blank-input')) : [input];
+          if (allInputs.some(el => el.value.trim())) {
+            interacted[question.id] = true;
+          } else {
+            delete interacted[question.id];
+          }
+          checkAllInteracted();
+        });
+        container.appendChild(input);
+      }
+    });
+  }
+
+  // ================================================================
+  // RENDER DRAG-DROP
+  // ================================================================
+  function renderDragDrop(question) {
+    const wrapper   = document.createElement('div');
+    wrapper.appendChild(buildDragList(question));
+
+    const announcer = document.createElement('div');
+    announcer.setAttribute('aria-live', 'polite');
+    announcer.className = 'drag-announcer';
+    // Visually hidden
+    announcer.style.cssText =
+      'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;';
+    wrapper.appendChild(announcer);
+
+    return wrapper;
+  }
+
+  function buildDragList(question) {
+    const list = document.createElement('ul');
+    list.className = 'drag-list';
+    list.setAttribute('role', 'listbox');
+    question.items.forEach(item => list.appendChild(createDragItem(item, question.id, list)));
+    return list;
+  }
+
+  function createDragItem(item, questionId, list) {
+    const li = document.createElement('li');
+    li.dataset.item = item;
+
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.setAttribute('aria-hidden', 'true');
+    handle.textContent = '⠿';
+    li.appendChild(handle);
+
+    const btnUp = document.createElement('button');
+    btnUp.className = 'move-up';
+    btnUp.setAttribute('aria-label', `Move ${item} up`);
+    btnUp.textContent = '▲';
+    btnUp.addEventListener('click', () => {
+      if (li.previousElementSibling) {
+        list.insertBefore(li, li.previousElementSibling);
+        updateDragAnnouncer(list, item);
+        interacted[questionId] = true;
+        checkAllInteracted();
+      }
+    });
+    li.appendChild(btnUp);
+
+    const btnDown = document.createElement('button');
+    btnDown.className = 'move-down';
+    btnDown.setAttribute('aria-label', `Move ${item} down`);
+    btnDown.textContent = '▼';
+    btnDown.addEventListener('click', () => {
+      if (li.nextElementSibling) {
+        list.insertBefore(li.nextElementSibling, li);
+        updateDragAnnouncer(list, item);
+        interacted[questionId] = true;
+        checkAllInteracted();
+      }
+    });
+    li.appendChild(btnDown);
+
+    const itemText = document.createElement('span');
+    itemText.className = 'item-text';
+    itemText.textContent = item;
+    li.appendChild(itemText);
+
+    return li;
+  }
+
+  function updateDragAnnouncer(list, movedItem) {
+    const card = list.closest('.question-card');
+    if (!card) return;
+    const announcer = card.querySelector('.drag-announcer');
+    if (!announcer) return;
+    const items = Array.from(list.querySelectorAll('li'));
+    const pos   = items.findIndex(el => el.dataset.item === movedItem) + 1;
+    announcer.textContent = `${movedItem} moved to position ${pos} of ${items.length}`;
+  }
+
+  // ================================================================
+  // INTERACTION TRACKING
+  // ================================================================
+  function checkAllInteracted() {
+    const allInteracted = quizData.questions.every(q => !!interacted[q.id]);
+    const btnSubmit     = document.getElementById('btn-submit');
+    const answerPrompt  = document.getElementById('answer-prompt');
+    if (allInteracted) {
+      btnSubmit.removeAttribute('aria-disabled');
+      btnSubmit.style.pointerEvents = '';
+      if (answerPrompt) answerPrompt.style.display = 'none';
+    } else {
+      btnSubmit.setAttribute('aria-disabled', 'true');
+      btnSubmit.style.pointerEvents = 'none';
+      if (answerPrompt) answerPrompt.style.display = '';
+    }
+    return allInteracted;
+  }
+
+  // ================================================================
+  // LEVENSHTEIN
+  // ================================================================
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = [];
+    for (let i = 0; i <= m; i++) { dp[i] = [i]; }
+    for (let j = 0; j <= n; j++) { dp[0][j] = j; }
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+        else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  // ================================================================
+  // MATCH ANSWER
+  // ================================================================
+  function matchAnswer(input, acceptedList, caseSensitive) {
+    const s       = input.trim();
+    const compare = caseSensitive ? s : s.toLowerCase();
+    const list    = caseSensitive
+      ? acceptedList.map(a => a.trim())
+      : acceptedList.map(a => a.toLowerCase().trim());
+    if (list.includes(compare)) return true;
+    const threshold = s.length < 5 ? 1 : 2;
+    return list.some(a => levenshtein(compare, a) <= threshold);
+  }
+
+  // ================================================================
+  // SCORE QUESTION
+  // ================================================================
+  function scoreQuestion(question, userAnswer) {
+    if (question.type === 'MultiChoice') {
+      const correct = (userAnswer === question.correctOption);
+      return { correct, userAnswer, correctAnswer: question.correctOption };
+    }
+    if (question.type === 'FillBlank') {
+      const blankResults  = (userAnswer || []).map((ans, i) =>
+        matchAnswer(ans, question.acceptedAnswers[i] || [], question.caseSensitive)
+      );
+      const correctBlanks = blankResults.filter(Boolean).length;
+      const totalBlanks   = blankResults.length;
+      const partialScore  = totalBlanks > 0 ? correctBlanks / totalBlanks : 0;
+      return { correct: partialScore === 1, partialScore, blankResults, userAnswer };
+    }
+    if (question.type === 'DragDrop') {
+      const positionResults = question.correctOrder.map((item, i) => item === userAnswer[i]);
+      return { correct: positionResults.every(Boolean), positionResults, userAnswer };
+    }
+    return { correct: false, userAnswer };
+  }
+
+  // ================================================================
+  // COLLECT ANSWERS
+  // ================================================================
+  function collectAnswer(question) {
+    const card = document.querySelector(`[data-question-id="${question.id}"]`);
+    if (!card) return null;
+    if (question.type === 'MultiChoice') {
+      const checked = document.querySelector(`input[name="q-${question.id}"]:checked`);
+      return checked ? checked.value : null;
+    }
+    if (question.type === 'FillBlank') {
+      return Array.from(card.querySelectorAll('.blank-input')).map(el => el.value.trim());
+    }
+    if (question.type === 'DragDrop') {
+      const list = card.querySelector('.drag-list');
+      return list ? Array.from(list.querySelectorAll('li')).map(el => el.dataset.item) : [];
+    }
+    return null;
+  }
+
+  // ================================================================
+  // HANDLE SUBMIT
+  // ================================================================
+  function handleSubmit() {
+    const btnSubmit = document.getElementById('btn-submit');
+    if (btnSubmit.getAttribute('aria-disabled') === 'true') return;
+
+    const answers = {};
+    const results = quizData.questions.map(question => {
+      const userAnswer = collectAnswer(question);
+      answers[question.id] = userAnswer;
+      return { question, ...scoreQuestion(question, userAnswer) };
+    });
+
+    const correctCount = results.filter(r => r.correct).length;
+
+    applyFeedback(results);
+
+    saveToSession({
+      answers,
+      results: results.map(r => ({
+        questionId:      r.question.id,
+        userAnswer:      r.userAnswer,
+        correct:         r.correct,
+        correctAnswer:   r.correctAnswer,
+        blankResults:    r.blankResults,
+        partialScore:    r.partialScore,
+        positionResults: r.positionResults,
+      })),
+      submitted:    true,
+      score:        correctCount / quizData.questions.length,
+      attemptCount,
+    });
+
+    const banner = document.getElementById('score-banner');
+    banner.textContent = `You got ${correctCount} of ${quizData.questions.length} correct`;
+    banner.style.display = '';
+
+    btnSubmit.style.display = 'none';
+    document.getElementById('btn-retry').style.display = '';
+  }
+
+  // ================================================================
+  // APPLY FEEDBACK
+  // ================================================================
+  function applyFeedback(results) {
+    results.forEach(r => {
+      const { question } = r;
+      const card = document.querySelector(`[data-question-id="${question.id}"]`);
+      if (!card) return;
+      const feedbackBox = card.querySelector('.feedback-box');
+
+      // ── MultiChoice ──
+      if (question.type === 'MultiChoice') {
+        card.querySelectorAll('label').forEach(label => {
+          const input = label.querySelector('input[type="radio"]');
+          if (!input) return;
+          if (input.value === r.correctAnswer) {
+            label.classList.add('answer-correct');
+            const s = document.createElement('span');
+            s.className = 'feedback-appended'; s.textContent = ' ✓';
+            label.appendChild(s);
+          } else if (input.value === r.userAnswer && !r.correct) {
+            label.classList.add('answer-incorrect');
+            const s = document.createElement('span');
+            s.className = 'feedback-appended'; s.textContent = ' ✗';
+            label.appendChild(s);
+          }
+          input.disabled = true;
+        });
+        if (feedbackBox) {
+          feedbackBox.textContent = r.correct ? question.feedbackCorrect : question.feedbackIncorrect;
+          feedbackBox.style.display = '';
+        }
+      }
+
+      // ── FillBlank ──
+      if (question.type === 'FillBlank') {
+        const inputs       = Array.from(card.querySelectorAll('.blank-input'));
+        const correctBlanks = r.blankResults ? r.blankResults.filter(Boolean).length : 0;
+        const totalBlanks   = inputs.length;
+        inputs.forEach((input, i) => {
+          const ok = r.blankResults ? r.blankResults[i] : r.correct;
+          input.classList.add(ok ? 'input-correct' : 'input-incorrect');
+          const s = document.createElement('span');
+          s.className = 'feedback-appended'; s.textContent = ok ? ' ✓' : ' ✗';
+          input.parentNode.insertBefore(s, input.nextSibling);
+          input.readOnly = true;
+        });
+        if (feedbackBox) {
+          let text = r.correct ? question.feedbackCorrect : question.feedbackIncorrect;
+          if (!r.correct && question.partialCredit && totalBlanks > 1) {
+            text = `(${correctBlanks} of ${totalBlanks} blanks correct) ${text}`;
+          }
+          feedbackBox.textContent = text;
+          if (!r.correct && question.hint) {
+            const p = document.createElement('p');
+            p.className = 'hint-text feedback-appended';
+            p.textContent = question.hint;
+            feedbackBox.appendChild(p);
+          }
+          feedbackBox.style.display = '';
+        }
+      }
+
+      // ── DragDrop ──
+      if (question.type === 'DragDrop') {
+        const list = card.querySelector('.drag-list');
+        if (list) {
+          Array.from(list.querySelectorAll('li')).forEach((li, i) => {
+            const ok = r.positionResults ? r.positionResults[i] : false;
+            li.classList.add(ok ? 'item-correct' : 'item-incorrect');
+            const s = document.createElement('span');
+            s.className = 'feedback-appended'; s.textContent = ok ? ' ✓' : ' ✗';
+            li.appendChild(s);
+          });
+          const heading = document.createElement('p');
+          heading.className = 'feedback-appended';
+          heading.textContent = 'Correct order:';
+          const ol = document.createElement('ol');
+          ol.className = 'feedback-appended';
+          question.correctOrder.forEach(item => {
+            const li = document.createElement('li'); li.textContent = item; ol.appendChild(li);
+          });
+          card.insertBefore(heading, feedbackBox);
+          card.insertBefore(ol, feedbackBox);
+        }
+        if (feedbackBox) {
+          feedbackBox.textContent = r.correct ? question.feedbackCorrect : question.feedbackIncorrect;
+          feedbackBox.style.display = '';
+        }
+      }
+    });
+
+    // Make all widgets inert
+    const area = document.getElementById('questions-area');
+    if (area) {
+      area.classList.add('submitted');
+      area.querySelectorAll('input[type="radio"]').forEach(el => { el.disabled = true; });
+      area.querySelectorAll('input[type="text"]').forEach(el  => { el.readOnly = true; });
+      area.querySelectorAll('button.move-up, button.move-down').forEach(el => { el.disabled = true; });
+    }
+  }
+
+  // ================================================================
+  // HANDLE RETRY
+  // ================================================================
+  function handleRetry() {
+    clearSession();
+    attemptCount++;
+    Object.keys(interacted).forEach(k => delete interacted[k]);
+
+    // Remove feedback classes
+    ['answer-correct','answer-incorrect','input-correct','input-incorrect',
+     'item-correct','item-incorrect'].forEach(cls =>
+      document.querySelectorAll(`#questions-area .${cls}`).forEach(el => el.classList.remove(cls))
+    );
+
+    // Remove all elements added during applyFeedback
+    document.querySelectorAll('#questions-area .feedback-appended').forEach(el => el.remove());
+
+    // Hide and clear feedback boxes
+    document.querySelectorAll('#questions-area .feedback-box').forEach(el => {
+      el.style.display = 'none'; el.textContent = '';
+    });
+
+    // Clear and re-enable radio inputs
+    document.querySelectorAll('#questions-area input[type="radio"]').forEach(el => {
+      el.checked = false; el.disabled = false;
+    });
+
+    // Clear and re-enable text inputs
+    document.querySelectorAll('#questions-area input[type="text"]').forEach(el => {
+      el.value = ''; el.readOnly = false;
+    });
+
+    // Reset DragDrop lists to original item order
+    quizData.questions.filter(q => q.type === 'DragDrop').forEach(question => {
+      const card = document.querySelector(`[data-question-id="${question.id}"]`);
+      if (!card) return;
+      const oldList = card.querySelector('.drag-list');
+      if (!oldList) return;
+      const wrapper = oldList.parentNode;
+      const newList = buildDragList(question);
+      wrapper.replaceChild(newList, oldList);
+    });
+
+    // Remove submitted class
+    const area = document.getElementById('questions-area');
+    if (area) area.classList.remove('submitted');
+
+    // Reset banner and buttons
+    const banner = document.getElementById('score-banner');
+    banner.style.display = 'none'; banner.textContent = '';
+
+    const btnSubmit = document.getElementById('btn-submit');
+    btnSubmit.style.display = '';
+    btnSubmit.setAttribute('aria-disabled', 'true');
+    btnSubmit.style.pointerEvents = 'none';
+
+    document.getElementById('btn-retry').style.display = 'none';
+
+    checkAllInteracted();
+  }
+
+  // ================================================================
+  // SESSION STORAGE
+  // ================================================================
+  function sessionKey()    { return 'quiz-state-' + (csvPath || 'default'); }
+
+  function saveToSession(state) {
+    try { sessionStorage.setItem(sessionKey(), JSON.stringify(state)); } catch (e) { /* silent */ }
+  }
+
+  function loadFromSession() {
+    try { return JSON.parse(sessionStorage.getItem(sessionKey())); } catch (e) { return null; }
+  }
+
+  function clearSession() {
+    try { sessionStorage.removeItem(sessionKey()); } catch (e) { /* silent */ }
+  }
+
+  // ================================================================
+  // RESTORE SESSION STATE
+  // ================================================================
+  function restoreAnswers(answers) {
+    quizData.questions.forEach(question => {
+      const userAnswer = answers[question.id];
+      if (userAnswer == null) return;
+      const card = document.querySelector(`[data-question-id="${question.id}"]`);
+      if (!card) return;
+      if (question.type === 'MultiChoice') {
+        const radio = card.querySelector(`input[name="q-${question.id}"][value="${userAnswer}"]`);
+        if (radio) radio.checked = true;
+      } else if (question.type === 'FillBlank') {
+        Array.from(card.querySelectorAll('.blank-input')).forEach((input, i) => {
+          if (userAnswer[i] != null) input.value = userAnswer[i];
+        });
+      } else if (question.type === 'DragDrop') {
+        const list = card.querySelector('.drag-list');
+        if (!list || !Array.isArray(userAnswer)) return;
+        // Reorder li elements to match saved answer order
+        userAnswer.forEach(itemText => {
+          const li = Array.from(list.querySelectorAll('li')).find(el => el.dataset.item === itemText);
+          if (li) list.appendChild(li);
+        });
+      }
+    });
+  }
+
+  function maybeRestoreSession() {
+    const state = loadFromSession();
+    if (!state || !state.submitted) return;
+
+    // Rebuild results with question references
+    const results = (state.results || []).map(sr => ({
+      question: quizData.questions.find(q => q.id === sr.questionId),
+      ...sr,
+    })).filter(r => r.question);
+
+    restoreAnswers(state.answers || {});
+    applyFeedback(results);
+
+    const correctCount = results.filter(r => r.correct).length;
+    const banner = document.getElementById('score-banner');
+    banner.textContent = `You got ${correctCount} of ${quizData.questions.length} correct`;
+    banner.style.display = '';
+
+    document.getElementById('btn-submit').style.display = 'none';
+    document.getElementById('btn-retry').style.display  = '';
+
+    if (state.attemptCount) attemptCount = state.attemptCount;
+  }
+
+  // ================================================================
+  // URL HELPER
+  // ================================================================
+  function buildCsvUrl(path) {
+    const pathname = window.location.pathname;
+    const base     = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+    return window.location.origin + base + path;
+  }
+
+  // ================================================================
+  // INIT
+  // ================================================================
+  async function init() {
+    if (!csvPath) {
+      showError('No Quiz Specified', 'Add ?quiz=path/to/your-quiz.csv to the URL.');
+      return;
+    }
+
+    let csvText;
+    try {
+      const response = await fetch(buildCsvUrl(csvPath));
+      if (response.status === 404) {
+        showError('Quiz Not Found', 'Quiz file not found. Check the CSV path in the URL.'); return;
+      }
+      if (!response.ok) {
+        showError('Error Loading Quiz', `HTTP ${response.status}. Please try again.`); return;
+      }
+      csvText = await response.text();
+    } catch (e) {
+      showError('Connection Error', 'Unable to load the quiz. Check your connection.'); return;
+    }
+
+    try {
+      const rows = parseCSV(csvText);
+      const quiz = buildQuiz(rows);
+      validateQuiz(quiz);
+      quizData = quiz;
+    } catch (e) {
+      showError('Quiz Configuration Error', e.message); return;
+    }
+
+    renderQuiz(quizData);
+    showQuiz();
+    maybeRestoreSession();
+  }
+
+  init();
+  </script>
+</body>
+</html>
