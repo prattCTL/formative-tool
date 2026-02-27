@@ -1,38 +1,28 @@
-# Adding Your Questions
+# Questions Folder
 
-Each CSV file in this folder is one quiz. Students see it by visiting:
+Add your quiz CSV files here, organized in subfolders by department or course.
 
-```
-https://<your-github-username>.github.io/<repo-name>/quiz.html?quiz=questions/your-file.csv
-```
+## Folder naming
 
-## Quick start
+Lowercase, hyphens, no spaces.
 
-1. Click **Add file → Create new file** in GitHub.
-2. Name it `questions/my-topic/my-quiz.csv` (create subfolders freely).
-3. Paste the header row, then add one row per question.
-4. Commit directly to `main`.
-5. Wait ~60 seconds for GitHub Pages to rebuild, then share the URL.
+Good: `biology/`   `chem101/`   `nursing-fundamentals/`
 
-## Header row (copy this exactly)
+## File naming
 
-```
-type,question_id,set_title,set_description,question_text,option_a,option_b,option_c,option_d,correct_option,accepted_answers,items,correct_order,feedback_correct,feedback_incorrect,hint,case_sensitive,partial_credit,shuffle_options
-```
+`course-topic.csv`
 
-## Supported question types
+Examples: `bio101-cell-division.csv`   `eng200-poetry-terms.csv`
 
-| `type` value | What it does |
-|---|---|
-| `MultiChoice` | Radio-button question with up to 4 options |
-| `FillBlank` | Student types into an inline blank; use `{{blank}}` in the question text |
-| `DragDrop` | Student drags items into the correct order |
+Each CSV file = one question set (one quiz as students experience it).
+
+## Adding questions
+
+See [`docs/FACULTY_GUIDE.md`](../docs/FACULTY_GUIDE.md) for step-by-step instructions.
+
+See [`docs/CSV_FORMAT.md`](../docs/CSV_FORMAT.md) for the complete column reference.
 
 ## Working examples
 
-- `questions/example/sample-quiz.csv` — one of each type
-- `questions/example/multichoice-only.csv` — three MultiChoice questions
-
-## Full authoring reference
-
-See [`docs/CSV_FORMAT.md`](../docs/CSV_FORMAT.md) for every column explained in detail.
+- `example/sample-quiz.csv` — one of each question type (MultiChoice, FillBlank, DragDrop)
+- `example/multichoice-only.csv` — three MultiChoice questions
