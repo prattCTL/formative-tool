@@ -829,6 +829,7 @@
       ? acceptedList.map(a => a.trim())
       : acceptedList.map(a => a.toLowerCase().trim());
     if (list.includes(compare)) return true;
+    if (s.length < 3) return false;  // exact match required for very short inputs
     const threshold = s.length < 5 ? 1 : 2;
     return list.some(a => levenshtein(compare, a) <= threshold);
   }
