@@ -4,10 +4,358 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quiz</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"
+          onerror="window.sortableJSFailed=true"></script>
+
+  <style>
+    /* ── Custom properties ── */
+    :root {
+      --color-correct:     #2d6a4f;
+      --color-correct-bg:  #d8f3dc;
+      --color-incorrect:   #9d0208;
+      --color-incorrect-bg:#ffccd5;
+      --color-primary:     #0077b6;
+      --color-border:      #dee2e6;
+      --radius:            8px;
+    }
+
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      background: #f4f6f8;
+      color: #212529;
+    }
+
+    /* ── Layout ── */
+    #quiz-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    /* ── Loading ── */
+    #loading-state {
+      text-align: center;
+      padding: 48px 0;
+      color: #6c757d;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 16px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* ── Error state ── */
+    #error-state {
+      max-width: 800px;
+      margin: 48px auto;
+      padding: 24px;
+      background: #fff0f0;
+      border: 1px solid #f5c6cb;
+      border-radius: var(--radius);
+    }
+
+    #error-state h2 { color: var(--color-incorrect); margin-bottom: 8px; }
+    #error-state p  { color: #6c757d; }
+
+    /* ── Score banner ── */
+    #score-banner {
+      display: none;
+      background: #f8f9fa;
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      font-size: 1.15rem;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    /* ── Question cards ── */
+    .question-card {
+      background: white;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .question-text {
+      font-weight: 600;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+
+    /* ── fieldset / legend ── */
+    fieldset {
+      border: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    legend {
+      font-weight: 600;
+      margin-bottom: 10px;
+      /* visually hidden — question-text <p> already shows it */
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+    }
+
+    /* ── MultiChoice labels ── */
+    fieldset label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    fieldset label:hover { background: #f8f9fa; border-color: #adb5bd; }
+
+    fieldset label input[type="radio"] { flex-shrink: 0; accent-color: var(--color-primary); }
+
+    .answer-correct {
+      border-color: var(--color-correct) !important;
+      background: var(--color-correct-bg) !important;
+      color: var(--color-correct) !important;
+    }
+
+    .answer-incorrect {
+      border-color: var(--color-incorrect) !important;
+      background: var(--color-incorrect-bg) !important;
+      color: var(--color-incorrect) !important;
+    }
+
+    /* ── FillBlank inputs ── */
+    .blank-input {
+      border: 2px solid var(--color-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 1rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+      vertical-align: baseline;
+      background: white;
+    }
+
+    .blank-input:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+    .input-correct  { border-color: var(--color-correct)   !important; }
+    .input-incorrect { border-color: var(--color-incorrect) !important; }
+
+    /* ── DragDrop ── */
+    .drag-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .drag-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      border-left: 4px solid transparent;
+      margin-bottom: 4px;
+      background: white;
+      cursor: default;
+      transition: border-left-color 0.2s ease;
+    }
+
+    .item-correct  { border-left-color: var(--color-correct)   !important; }
+    .item-incorrect { border-left-color: var(--color-incorrect) !important; }
+
+    .drag-handle {
+      cursor: grab;
+      color: #adb5bd;
+      font-size: 1.2rem;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .drag-ghost  { opacity: 0.4; background: #e3f2fd !important; }
+    .drag-chosen { background: #f0f7ff !important; }
+
+    .move-up, .move-down {
+      padding: 2px 6px;
+      font-size: 0.8rem;
+      background: #f8f9fa;
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+      cursor: pointer;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .move-up:hover, .move-down:hover { background: #e9ecef; }
+
+    .drag-fallback-msg {
+      font-size: 0.875rem;
+      color: #6c757d;
+      margin-bottom: 8px;
+      font-style: italic;
+    }
+
+    /* ── Drag announcer (visually hidden, not display:none) ── */
+    .drag-announcer {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ── Icon spans ── */
+    .icon-correct  { font-size: 0.9rem; margin-left: 4px; color: var(--color-correct); }
+    .icon-incorrect { font-size: 0.9rem; margin-left: 4px; color: var(--color-incorrect); }
+
+    /* ── Feedback boxes ── */
+    .feedback-box {
+      padding: 12px 16px;
+      border-radius: 4px;
+      margin-top: 12px;
+      font-size: 0.95rem;
+      animation: slideDown 0.2s ease-out;
+    }
+
+    .feedback-correct {
+      background: var(--color-correct-bg);
+      color: #1b4332;
+    }
+
+    .feedback-incorrect {
+      background: var(--color-incorrect-bg);
+      color: #6b0018;
+    }
+
+    .hint-text {
+      margin-top: 8px;
+      color: #495057;
+      font-style: italic;
+      font-size: 0.9rem;
+    }
+
+    /* ── Correct order section ── */
+    .correct-order-section {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+
+    .correct-order-section p { font-weight: 600; margin-bottom: 4px; }
+    .correct-order-section ol { padding-left: 20px; }
+
+    /* ── Buttons ── */
+    #btn-submit {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      min-height: 48px;
+      margin-top: 8px;
+    }
+
+    #btn-submit[aria-disabled="true"] {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #btn-retry {
+      display: none;
+      width: 100%;
+      padding: 14px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      background: #495057;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      min-height: 48px;
+      margin-top: 8px;
+    }
+
+    #answer-prompt {
+      text-align: center;
+      color: #6c757d;
+      font-size: 0.9rem;
+      margin: 6px 0 0;
+    }
+
+    /* ── Submitted state (pointer lock) ── */
+    .submitted input,
+    .submitted .blank-input {
+      pointer-events: none;
+    }
+
+    .submitted .move-up,
+    .submitted .move-down {
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    /* ── Animations ── */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Reduced motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 480px) {
+      #quiz-container { padding: 16px 12px; }
+      .question-card  { padding: 14px; }
+      .drag-list li   { padding: 8px 10px; }
+    }
+  </style>
 </head>
 <body>
   <div id="app">
-    <div id="loading-state"><p>Loading quiz&hellip;</p></div>
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <p>Loading quiz&hellip;</p>
+    </div>
     <div id="error-state" style="display:none">
       <h2 id="error-title">Error</h2>
       <p id="error-message"></p>
@@ -197,6 +545,7 @@
     const banner = document.createElement('div');
     banner.id = 'score-banner';
     banner.setAttribute('role', 'alert');
+    banner.setAttribute('tabindex', '-1');
     banner.style.display = 'none';
     container.appendChild(banner);
 
@@ -220,7 +569,6 @@
 
     const btnRetry = document.createElement('button');
     btnRetry.id = 'btn-retry';
-    btnRetry.style.display = 'none';
     btnRetry.textContent = 'Try Again';
     btnRetry.addEventListener('click', handleRetry);
     container.appendChild(btnRetry);
@@ -323,15 +671,37 @@
   // RENDER DRAG-DROP
   // ================================================================
   function renderDragDrop(question) {
-    const wrapper   = document.createElement('div');
-    wrapper.appendChild(buildDragList(question));
+    const wrapper = document.createElement('div');
+    const list    = buildDragList(question);
+
+    if (typeof Sortable !== 'undefined') {
+      const sortable = new Sortable(list, {
+        animation:  150,
+        handle:     '.drag-handle',
+        ghostClass: 'drag-ghost',
+        chosenClass:'drag-chosen',
+        onEnd: (evt) => {
+          interacted[question.id] = true;
+          checkAllInteracted();
+          // Announce the reorder for screen readers
+          const movedItem = evt.item.dataset.item;
+          if (movedItem) updateDragAnnouncer(list, movedItem);
+        },
+      });
+      list._sortable = sortable;
+    } else {
+      // CDN failed — show accessible fallback notice above the list
+      const msg = document.createElement('p');
+      msg.className = 'drag-fallback-msg';
+      msg.textContent = 'Drag and drop unavailable. Use the \u25b2 \u25bc buttons to reorder.';
+      wrapper.appendChild(msg);
+    }
+
+    wrapper.appendChild(list);
 
     const announcer = document.createElement('div');
     announcer.setAttribute('aria-live', 'polite');
     announcer.className = 'drag-announcer';
-    // Visually hidden
-    announcer.style.cssText =
-      'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;';
     wrapper.appendChild(announcer);
 
     return wrapper;
@@ -389,6 +759,23 @@
     li.appendChild(itemText);
 
     return li;
+  }
+
+  function initSortable(list, questionId) {
+    if (typeof Sortable === 'undefined') return;
+    const sortable = new Sortable(list, {
+      animation:  150,
+      handle:     '.drag-handle',
+      ghostClass: 'drag-ghost',
+      chosenClass:'drag-chosen',
+      onEnd: (evt) => {
+        interacted[questionId] = true;
+        checkAllInteracted();
+        const movedItem = evt.item.dataset.item;
+        if (movedItem) updateDragAnnouncer(list, movedItem);
+      },
+    });
+    list._sortable = sortable;
   }
 
   function updateDragAnnouncer(list, movedItem) {
@@ -531,10 +918,11 @@
 
     const banner = document.getElementById('score-banner');
     banner.textContent = `You got ${correctCount} of ${quizData.questions.length} correct`;
-    banner.style.display = '';
+    banner.style.display = 'block';
+    banner.focus();
 
     btnSubmit.style.display = 'none';
-    document.getElementById('btn-retry').style.display = '';
+    document.getElementById('btn-retry').style.display = 'block';
   }
 
   // ================================================================
@@ -555,17 +943,20 @@
           if (input.value === r.correctAnswer) {
             label.classList.add('answer-correct');
             const s = document.createElement('span');
-            s.className = 'feedback-appended'; s.textContent = ' ✓';
+            s.className = 'icon-correct feedback-appended';
+            s.textContent = ' ✓';
             label.appendChild(s);
           } else if (input.value === r.userAnswer && !r.correct) {
             label.classList.add('answer-incorrect');
             const s = document.createElement('span');
-            s.className = 'feedback-appended'; s.textContent = ' ✗';
+            s.className = 'icon-incorrect feedback-appended';
+            s.textContent = ' ✗';
             label.appendChild(s);
           }
           input.disabled = true;
         });
         if (feedbackBox) {
+          feedbackBox.className = 'feedback-box ' + (r.correct ? 'feedback-correct' : 'feedback-incorrect');
           feedbackBox.textContent = r.correct ? question.feedbackCorrect : question.feedbackIncorrect;
           feedbackBox.style.display = '';
         }
@@ -573,18 +964,20 @@
 
       // ── FillBlank ──
       if (question.type === 'FillBlank') {
-        const inputs       = Array.from(card.querySelectorAll('.blank-input'));
+        const inputs        = Array.from(card.querySelectorAll('.blank-input'));
         const correctBlanks = r.blankResults ? r.blankResults.filter(Boolean).length : 0;
         const totalBlanks   = inputs.length;
         inputs.forEach((input, i) => {
           const ok = r.blankResults ? r.blankResults[i] : r.correct;
           input.classList.add(ok ? 'input-correct' : 'input-incorrect');
           const s = document.createElement('span');
-          s.className = 'feedback-appended'; s.textContent = ok ? ' ✓' : ' ✗';
+          s.className = (ok ? 'icon-correct' : 'icon-incorrect') + ' feedback-appended';
+          s.textContent = ok ? ' ✓' : ' ✗';
           input.parentNode.insertBefore(s, input.nextSibling);
           input.readOnly = true;
         });
         if (feedbackBox) {
+          feedbackBox.className = 'feedback-box ' + (r.correct ? 'feedback-correct' : 'feedback-incorrect');
           let text = r.correct ? question.feedbackCorrect : question.feedbackIncorrect;
           if (!r.correct && question.partialCredit && totalBlanks > 1) {
             text = `(${correctBlanks} of ${totalBlanks} blanks correct) ${text}`;
@@ -604,25 +997,34 @@
       if (question.type === 'DragDrop') {
         const list = card.querySelector('.drag-list');
         if (list) {
+          // Disable SortableJS
+          if (list._sortable) {
+            list._sortable.destroy();
+            list._sortable = null;
+          }
           Array.from(list.querySelectorAll('li')).forEach((li, i) => {
             const ok = r.positionResults ? r.positionResults[i] : false;
             li.classList.add(ok ? 'item-correct' : 'item-incorrect');
             const s = document.createElement('span');
-            s.className = 'feedback-appended'; s.textContent = ok ? ' ✓' : ' ✗';
+            s.className = (ok ? 'icon-correct' : 'icon-incorrect') + ' feedback-appended';
+            s.textContent = ok ? ' ✓' : ' ✗';
             li.appendChild(s);
           });
+          // Correct order section
+          const section = document.createElement('div');
+          section.className = 'correct-order-section feedback-appended';
           const heading = document.createElement('p');
-          heading.className = 'feedback-appended';
           heading.textContent = 'Correct order:';
           const ol = document.createElement('ol');
-          ol.className = 'feedback-appended';
           question.correctOrder.forEach(item => {
             const li = document.createElement('li'); li.textContent = item; ol.appendChild(li);
           });
-          card.insertBefore(heading, feedbackBox);
-          card.insertBefore(ol, feedbackBox);
+          section.appendChild(heading);
+          section.appendChild(ol);
+          card.insertBefore(section, feedbackBox);
         }
         if (feedbackBox) {
+          feedbackBox.className = 'feedback-box ' + (r.correct ? 'feedback-correct' : 'feedback-incorrect');
           feedbackBox.textContent = r.correct ? question.feedbackCorrect : question.feedbackIncorrect;
           feedbackBox.style.display = '';
         }
@@ -656,9 +1058,11 @@
     // Remove all elements added during applyFeedback
     document.querySelectorAll('#questions-area .feedback-appended').forEach(el => el.remove());
 
-    // Hide and clear feedback boxes
+    // Hide and clear feedback boxes (reset className too)
     document.querySelectorAll('#questions-area .feedback-box').forEach(el => {
-      el.style.display = 'none'; el.textContent = '';
+      el.style.display = 'none';
+      el.className = 'feedback-box';
+      el.textContent = '';
     });
 
     // Clear and re-enable radio inputs
@@ -671,15 +1075,20 @@
       el.value = ''; el.readOnly = false;
     });
 
-    // Reset DragDrop lists to original item order
+    // Reset DragDrop lists: destroy Sortable, rebuild, re-init Sortable
     quizData.questions.filter(q => q.type === 'DragDrop').forEach(question => {
       const card = document.querySelector(`[data-question-id="${question.id}"]`);
       if (!card) return;
       const oldList = card.querySelector('.drag-list');
       if (!oldList) return;
+      if (oldList._sortable) {
+        oldList._sortable.destroy();
+        oldList._sortable = null;
+      }
       const wrapper = oldList.parentNode;
       const newList = buildDragList(question);
       wrapper.replaceChild(newList, oldList);
+      initSortable(newList, question.id);
     });
 
     // Remove submitted class
@@ -736,7 +1145,6 @@
       } else if (question.type === 'DragDrop') {
         const list = card.querySelector('.drag-list');
         if (!list || !Array.isArray(userAnswer)) return;
-        // Reorder li elements to match saved answer order
         userAnswer.forEach(itemText => {
           const li = Array.from(list.querySelectorAll('li')).find(el => el.dataset.item === itemText);
           if (li) list.appendChild(li);
@@ -749,7 +1157,6 @@
     const state = loadFromSession();
     if (!state || !state.submitted) return;
 
-    // Rebuild results with question references
     const results = (state.results || []).map(sr => ({
       question: quizData.questions.find(q => q.id === sr.questionId),
       ...sr,
@@ -761,10 +1168,10 @@
     const correctCount = results.filter(r => r.correct).length;
     const banner = document.getElementById('score-banner');
     banner.textContent = `You got ${correctCount} of ${quizData.questions.length} correct`;
-    banner.style.display = '';
+    banner.style.display = 'block';
 
     document.getElementById('btn-submit').style.display = 'none';
-    document.getElementById('btn-retry').style.display  = '';
+    document.getElementById('btn-retry').style.display  = 'block';
 
     if (state.attemptCount) attemptCount = state.attemptCount;
   }
