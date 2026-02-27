@@ -502,8 +502,11 @@
   function validateQuiz(quiz) {
     if (!quiz.questions || quiz.questions.length === 0)
       throw new Error('This quiz has no questions.');
+    const seenIds = new Set();
     for (const q of quiz.questions) {
       if (!q.id) throw new Error('A question is missing a question_id.');
+      if (seenIds.has(q.id)) throw new Error(`Duplicate question_id "${q.id}" found. Each question must have a unique ID.`);
+      seenIds.add(q.id);
       if (!['MultiChoice','FillBlank','DragDrop'].includes(q.type))
         throw new Error(`Question ${q.id}: invalid type "${q.type}".`);
       if (!q.text) throw new Error(`Question ${q.id}: missing question_text.`);
