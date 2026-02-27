@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quiz</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"
-          onerror="window.sortableJSFailed=true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
 
   <style>
     /* ── Custom properties ── */
@@ -470,7 +469,7 @@
         });
         return { ...base, options,
           correctOption:  (row.correct_option  || '').trim().toUpperCase(),
-          shuffleOptions: (row.shuffle_options || '').trim() === 'TRUE' };
+          shuffleOptions: (row.shuffle_options || '').trim().toUpperCase() === 'TRUE' };
       }
       if (type === 'FillBlank') {
         const template   = (row.question_text || '').trim();
@@ -480,8 +479,8 @@
           ? raw.split(';').map(g => g.split('|').map(a => a.trim()).filter(Boolean))
           : [];
         return { ...base, template, blankCount, acceptedAnswers,
-          caseSensitive: (row.case_sensitive || '').trim() === 'TRUE',
-          partialCredit: (row.partial_credit  || '').trim() === 'TRUE',
+          caseSensitive: (row.case_sensitive || '').trim().toUpperCase() === 'TRUE',
+          partialCredit: (row.partial_credit  || '').trim().toUpperCase() === 'TRUE',
           hint:          (row.hint            || '').trim() };
       }
       if (type === 'DragDrop') {
@@ -705,7 +704,7 @@
   function buildDragList(question) {
     const list = document.createElement('ul');
     list.className = 'drag-list';
-    list.setAttribute('role', 'listbox');
+    list.setAttribute('role', 'list');
     question.items.forEach(item => list.appendChild(createDragItem(item, question.id, list)));
     return list;
   }
@@ -1143,7 +1142,8 @@
       const card = document.querySelector(`[data-question-id="${question.id}"]`);
       if (!card) return;
       if (question.type === 'MultiChoice') {
-        const radio = card.querySelector(`input[name="q-${question.id}"][value="${userAnswer}"]`);
+        const radio = Array.from(card.querySelectorAll(`input[name="q-${question.id}"]`))
+          .find(el => el.value === userAnswer);
         if (radio) radio.checked = true;
       } else if (question.type === 'FillBlank') {
         Array.from(card.querySelectorAll('.blank-input')).forEach((input, i) => {
