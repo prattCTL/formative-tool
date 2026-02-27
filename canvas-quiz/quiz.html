@@ -412,7 +412,7 @@
   }
 
   // ================================================================
-  // CSV PARSER  (Prompt 1)
+  // CSV PARSER
   // ================================================================
   function parseCSV(rawText) {
     const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -446,7 +446,7 @@
   }
 
   // ================================================================
-  // DATA TRANSFORMATION  (Prompt 1)
+  // DATA TRANSFORMATION
   // ================================================================
   function buildQuiz(rows) {
     if (!rows || rows.length === 0) throw new Error('No question data found in the CSV file.');
@@ -497,7 +497,7 @@
   }
 
   // ================================================================
-  // VALIDATION  (Prompt 1)
+  // VALIDATION
   // ================================================================
   function validateQuiz(quiz) {
     if (!quiz.questions || quiz.questions.length === 0)
@@ -1006,18 +1006,20 @@
             s.textContent = ok ? ' ✓' : ' ✗';
             li.appendChild(s);
           });
-          // Correct order section
-          const section = document.createElement('div');
-          section.className = 'correct-order-section feedback-appended';
-          const heading = document.createElement('p');
-          heading.textContent = 'Correct order:';
-          const ol = document.createElement('ol');
-          question.correctOrder.forEach(item => {
-            const li = document.createElement('li'); li.textContent = item; ol.appendChild(li);
-          });
-          section.appendChild(heading);
-          section.appendChild(ol);
-          card.insertBefore(section, feedbackBox);
+          // Correct order section (only shown when answer is wrong)
+          if (!r.correct) {
+            const section = document.createElement('div');
+            section.className = 'correct-order-section feedback-appended';
+            const heading = document.createElement('p');
+            heading.textContent = 'Correct order:';
+            const ol = document.createElement('ol');
+            question.correctOrder.forEach(item => {
+              const li = document.createElement('li'); li.textContent = item; ol.appendChild(li);
+            });
+            section.appendChild(heading);
+            section.appendChild(ol);
+            card.insertBefore(section, feedbackBox);
+          }
         }
         if (feedbackBox) {
           feedbackBox.className = 'feedback-box ' + (r.correct ? 'feedback-correct' : 'feedback-incorrect');
