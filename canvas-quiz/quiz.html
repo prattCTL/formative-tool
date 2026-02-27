@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quiz</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"
-          onerror="window.sortableJSFailed=true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
 
   <style>
     /* ── Custom properties ── */
@@ -334,6 +333,17 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
+    /* ── Storage warning ── */
+    #storage-warning {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      color: #856404;
+    }
+
     /* ── Reduced motion ── */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -376,12 +386,6 @@
   // ================================================================
   // UTILITIES
   // ================================================================
-  function escapeHtml(str) {
-    return String(str == null ? '' : str)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
   function shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -407,7 +411,7 @@
   }
 
   // ================================================================
-  // CSV PARSER  (Prompt 1)
+  // CSV PARSER
   // ================================================================
   function parseCSV(rawText) {
     const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -441,7 +445,7 @@
   }
 
   // ================================================================
-  // DATA TRANSFORMATION  (Prompt 1)
+  // DATA TRANSFORMATION
   // ================================================================
   function buildQuiz(rows) {
     if (!rows || rows.length === 0) throw new Error('No question data found in the CSV file.');
@@ -465,7 +469,7 @@
         });
         return { ...base, options,
           correctOption:  (row.correct_option  || '').trim().toUpperCase(),
-          shuffleOptions: (row.shuffle_options || '').trim() === 'TRUE' };
+          shuffleOptions: (row.shuffle_options || '').trim().toUpperCase() === 'TRUE' };
       }
       if (type === 'FillBlank') {
         const template   = (row.question_text || '').trim();
@@ -475,8 +479,8 @@
           ? raw.split(';').map(g => g.split('|').map(a => a.trim()).filter(Boolean))
           : [];
         return { ...base, template, blankCount, acceptedAnswers,
-          caseSensitive: (row.case_sensitive || '').trim() === 'TRUE',
-          partialCredit: (row.partial_credit  || '').trim() === 'TRUE',
+          caseSensitive: (row.case_sensitive || '').trim().toUpperCase() === 'TRUE',
+          partialCredit: (row.partial_credit  || '').trim().toUpperCase() === 'TRUE',
           hint:          (row.hint            || '').trim() };
       }
       if (type === 'DragDrop') {
@@ -492,13 +496,16 @@
   }
 
   // ================================================================
-  // VALIDATION  (Prompt 1)
+  // VALIDATION
   // ================================================================
   function validateQuiz(quiz) {
     if (!quiz.questions || quiz.questions.length === 0)
       throw new Error('This quiz has no questions.');
+    const seenIds = new Set();
     for (const q of quiz.questions) {
       if (!q.id) throw new Error('A question is missing a question_id.');
+      if (seenIds.has(q.id)) throw new Error(`Duplicate question_id "${q.id}" found. Each question must have a unique ID.`);
+      seenIds.add(q.id);
       if (!['MultiChoice','FillBlank','DragDrop'].includes(q.type))
         throw new Error(`Question ${q.id}: invalid type "${q.type}".`);
       if (!q.text) throw new Error(`Question ${q.id}: missing question_text.`);
@@ -675,20 +682,7 @@
     const list    = buildDragList(question);
 
     if (typeof Sortable !== 'undefined') {
-      const sortable = new Sortable(list, {
-        animation:  150,
-        handle:     '.drag-handle',
-        ghostClass: 'drag-ghost',
-        chosenClass:'drag-chosen',
-        onEnd: (evt) => {
-          interacted[question.id] = true;
-          checkAllInteracted();
-          // Announce the reorder for screen readers
-          const movedItem = evt.item.dataset.item;
-          if (movedItem) updateDragAnnouncer(list, movedItem);
-        },
-      });
-      list._sortable = sortable;
+      initSortable(list, question.id);
     } else {
       // CDN failed — show accessible fallback notice above the list
       const msg = document.createElement('p');
@@ -710,7 +704,7 @@
   function buildDragList(question) {
     const list = document.createElement('ul');
     list.className = 'drag-list';
-    list.setAttribute('role', 'listbox');
+    list.setAttribute('role', 'list');
     question.items.forEach(item => list.appendChild(createDragItem(item, question.id, list)));
     return list;
   }
@@ -834,6 +828,7 @@
       ? acceptedList.map(a => a.trim())
       : acceptedList.map(a => a.toLowerCase().trim());
     if (list.includes(compare)) return true;
+    if (s.length < 3) return false;  // exact match required for very short inputs
     const threshold = s.length < 5 ? 1 : 2;
     return list.some(a => levenshtein(compare, a) <= threshold);
   }
@@ -1010,18 +1005,20 @@
             s.textContent = ok ? ' ✓' : ' ✗';
             li.appendChild(s);
           });
-          // Correct order section
-          const section = document.createElement('div');
-          section.className = 'correct-order-section feedback-appended';
-          const heading = document.createElement('p');
-          heading.textContent = 'Correct order:';
-          const ol = document.createElement('ol');
-          question.correctOrder.forEach(item => {
-            const li = document.createElement('li'); li.textContent = item; ol.appendChild(li);
-          });
-          section.appendChild(heading);
-          section.appendChild(ol);
-          card.insertBefore(section, feedbackBox);
+          // Correct order section (only shown when answer is wrong)
+          if (!r.correct) {
+            const section = document.createElement('div');
+            section.className = 'correct-order-section feedback-appended';
+            const heading = document.createElement('p');
+            heading.textContent = 'Correct order:';
+            const ol = document.createElement('ol');
+            question.correctOrder.forEach(item => {
+              const li = document.createElement('li'); li.textContent = item; ol.appendChild(li);
+            });
+            section.appendChild(heading);
+            section.appendChild(ol);
+            card.insertBefore(section, feedbackBox);
+          }
         }
         if (feedbackBox) {
           feedbackBox.className = 'feedback-box ' + (r.correct ? 'feedback-correct' : 'feedback-incorrect');
@@ -1114,8 +1111,17 @@
   // ================================================================
   function sessionKey()    { return 'quiz-state-' + (csvPath || 'default'); }
 
+  function showStorageWarning() {
+    const container = document.getElementById('quiz-container');
+    if (!container || document.getElementById('storage-warning')) return;
+    const el = document.createElement('p');
+    el.id = 'storage-warning';
+    el.textContent = 'Note: Your progress cannot be saved in this browser session (storage unavailable). Refreshing the page will reset your answers.';
+    container.insertBefore(el, container.firstChild);
+  }
+
   function saveToSession(state) {
-    try { sessionStorage.setItem(sessionKey(), JSON.stringify(state)); } catch (e) { /* silent */ }
+    try { sessionStorage.setItem(sessionKey(), JSON.stringify(state)); } catch (e) { showStorageWarning(); }
   }
 
   function loadFromSession() {
@@ -1136,7 +1142,8 @@
       const card = document.querySelector(`[data-question-id="${question.id}"]`);
       if (!card) return;
       if (question.type === 'MultiChoice') {
-        const radio = card.querySelector(`input[name="q-${question.id}"][value="${userAnswer}"]`);
+        const radio = Array.from(card.querySelectorAll(`input[name="q-${question.id}"]`))
+          .find(el => el.value === userAnswer);
         if (radio) radio.checked = true;
       } else if (question.type === 'FillBlank') {
         Array.from(card.querySelectorAll('.blank-input')).forEach((input, i) => {
@@ -1195,8 +1202,11 @@
     }
 
     let csvText;
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(buildCsvUrl(csvPath));
+      const response = await fetch(buildCsvUrl(csvPath), { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (response.status === 404) {
         showError('Quiz Not Found', 'Quiz file not found. Check the CSV path in the URL.'); return;
       }
@@ -1205,7 +1215,13 @@
       }
       csvText = await response.text();
     } catch (e) {
-      showError('Connection Error', 'Unable to load the quiz. Check your connection.'); return;
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        showError('Request Timed Out', 'The quiz took too long to load. Please refresh and try again.');
+      } else {
+        showError('Connection Error', 'Unable to load the quiz. Check your connection.');
+      }
+      return;
     }
 
     try {
