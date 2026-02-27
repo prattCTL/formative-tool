@@ -1,9 +1,9 @@
 # CSV Format Reference
 
-One CSV file = one question set. All question types can coexist in the same file.
-Row 1 is always the **header row** — copy it exactly.
+## Overview
 
-## Header row
+One CSV file = one question set. All rows share the same title and description.
+Row 1 is always the **header row** — copy the exact column names below. Do not rename or reorder them.
 
 ```
 type,question_id,set_title,set_description,question_text,option_a,option_b,option_c,option_d,correct_option,accepted_answers,items,correct_order,feedback_correct,feedback_incorrect,hint,case_sensitive,partial_credit,shuffle_options
@@ -11,147 +11,149 @@ type,question_id,set_title,set_description,question_text,option_a,option_b,optio
 
 ---
 
-## Column reference
+## Column Reference
 
-### `type` *(required)*
+| Column Name | Used By | Required? | Description | Example |
+|---|---|---|---|---|
+| `type` | All | **Yes** | Question type. Exactly one of: `MultiChoice`, `FillBlank`, `DragDrop` | `MultiChoice` |
+| `question_id` | All | **Yes** | Unique identifier within the file. Recommended prefixes: `MC-`, `FB-`, `DD-` | `MC-001` |
+| `set_title` | All | **First row only** | Quiz title shown at the top of the page. Only the first data row's value is used. | `Cell Biology Check` |
+| `set_description` | All | No | Short subtitle below the title. Leave blank if not needed. Only the first row's value is used. | `Test your knowledge of cell organelles.` |
+| `question_text` | All | **Yes** | The question prompt. For FillBlank, include `{{blank}}` where each input goes. | `Which organelle produces ATP?` |
+| `option_a` | MultiChoice | **Yes** | Text for option A | `Nucleus` |
+| `option_b` | MultiChoice | **Yes** | Text for option B | `Mitochondria` |
+| `option_c` | MultiChoice | No | Text for option C (leave blank for 2-option questions) | `Ribosome` |
+| `option_d` | MultiChoice | No | Text for option D (leave blank for 2- or 3-option questions) | `Golgi apparatus` |
+| `correct_option` | MultiChoice | **Yes** | Must be exactly `A`, `B`, `C`, or `D`, matching a column that has text | `B` |
+| `accepted_answers` | FillBlank | **Yes** | Accepted spellings per blank. Use `\|` between synonyms; use `;` between blanks | `photosynthesis\|photo synthesis` |
+| `items` | DragDrop | **Yes** | Pipe-delimited list of items in the scrambled display order students see | `Anaphase\|Prophase\|Telophase\|Metaphase` |
+| `correct_order` | DragDrop | **Yes** | The same items in the correct sequence. Must contain identical elements to `items` | `Prophase\|Metaphase\|Anaphase\|Telophase` |
+| `feedback_correct` | All | No | Message shown when the student answers correctly. Default: `Correct!` | `Right — mitochondria produce ATP.` |
+| `feedback_incorrect` | All | No | Message shown when the student answers incorrectly. Default: `Review this topic and try again.` | `Think about which organelle makes energy.` |
+| `hint` | FillBlank | No | Extra hint shown below the question after an incorrect submission. Leave blank to omit. | `Think about what "photo" means in Greek.` |
+| `case_sensitive` | FillBlank | No | `TRUE` or `FALSE`. Whether the blank matching is case-sensitive. Default: `FALSE` | `FALSE` |
+| `partial_credit` | FillBlank | No | `TRUE` or `FALSE`. When `TRUE`, each blank is scored independently. Only affects multi-blank questions. Default: `FALSE` | `TRUE` |
+| `shuffle_options` | MultiChoice | No | `TRUE` or `FALSE`. Randomizes option order on each page load. Default: `FALSE` | `FALSE` |
 
-Exactly one of:
+---
 
-| Value | Question style |
+## Question Type Examples
+
+### Multiple Choice
+
+**4-option example**
+
+| Column | Value |
 |---|---|
-| `MultiChoice` | Radio-button; up to 4 lettered options |
-| `FillBlank` | Inline text input(s) embedded in the question sentence |
-| `DragDrop` | Draggable list the student reorders |
+| `type` | `MultiChoice` |
+| `question_id` | `MC-001` |
+| `set_title` | `Cell Biology Check` |
+| `set_description` | `Test your knowledge of cell organelles.` |
+| `question_text` | `Which organelle is known as the powerhouse of the cell?` |
+| `option_a` | `Nucleus` |
+| `option_b` | `Mitochondria` |
+| `option_c` | `Ribosome` |
+| `option_d` | `Golgi apparatus` |
+| `correct_option` | `B` |
+| `feedback_correct` | `That's right — mitochondria produce ATP through cellular respiration.` |
+| `feedback_incorrect` | `Not quite. Think about which organelle produces energy for the cell.` |
+| `shuffle_options` | `TRUE` |
 
-All rows in a file must share the same `set_title` and `set_description` — only the **first data row** is read for those fields.
+*What students see:* A question with four radio buttons. After submitting, option B highlights green with ✓; any wrong selection highlights red with ✗.
 
----
+**2-option example**
 
-### `question_id` *(required)*
+| Column | Value |
+|---|---|
+| `type` | `MultiChoice` |
+| `question_id` | `MC-002` |
+| `question_text` | `Does DNA replication occur in the nucleus?` |
+| `option_a` | `Yes` |
+| `option_b` | `No` |
+| `option_c` | *(leave blank)* |
+| `option_d` | *(leave blank)* |
+| `correct_option` | `A` |
 
-Unique identifier within the file. Recommended prefixes:
-
-- `MC-001`, `MC-002` … for MultiChoice
-- `FB-001`, `FB-002` … for FillBlank
-- `DD-001`, `DD-002` … for DragDrop
-
----
-
-### `set_title` *(required on first row)*
-
-Display title shown at the top of the quiz. Only the first data row's value is used.
-
-### `set_description` *(optional, first row only)*
-
-Short subtitle shown below the title. Leave blank if not needed.
-
----
-
-### `question_text` *(required)*
-
-The question prompt shown to students.
-
-- For **FillBlank**: use `{{blank}}` as a placeholder for each blank.
-  Example: `The powerhouse of the cell is the {{blank}}.`
-  Multiple blanks: `{{blank}} and {{blank}} are both organelles.`
+*What students see:* A true/false-style question with two radio buttons.
 
 ---
 
-### `option_a`, `option_b`, `option_c`, `option_d`
+### Fill in the Blank
 
-**MultiChoice only.** At least `option_a` and `option_b` are required; `option_c` and `option_d` are optional. Leave all four empty for FillBlank and DragDrop rows.
+**Single blank, one accepted answer**
 
----
+| Column | Value |
+|---|---|
+| `type` | `FillBlank` |
+| `question_id` | `FB-001` |
+| `question_text` | `The powerhouse of the cell is the {{blank}}.` |
+| `accepted_answers` | `mitochondria` |
+| `case_sensitive` | `FALSE` |
 
-### `correct_option`
-
-**MultiChoice only.** Must be exactly `A`, `B`, `C`, or `D`, matching an option that has text.
-
----
-
-### `accepted_answers`
-
-**FillBlank only.** Pipe-delimited list of accepted spellings/synonyms per blank.
-
-**Single blank:**
-```
-mitochondria|mitochondrion|the mitochondria
-```
-
-**Multiple blanks** — separate groups with semicolons, answers within a group with pipes:
-```
-carbon dioxide|CO2;water|H2O
-```
-
-Leave empty for MultiChoice and DragDrop rows.
+*What students see:* `The powerhouse of the cell is the` _____ `.`
+Accepts: `mitochondria`, `Mitochondria`, `MITOCHONDRIA` (case-insensitive). Also accepts close misspellings (`mitocondria`) via fuzzy matching.
 
 ---
 
-### `items`
+**Single blank, multiple accepted answers (pipe-delimited)**
 
-**DragDrop only.** Pipe-delimited list of items shown to students in the *display* order (intentionally scrambled).
+| Column | Value |
+|---|---|
+| `type` | `FillBlank` |
+| `question_id` | `FB-002` |
+| `question_text` | `Plants convert sunlight to chemical energy through {{blank}}.` |
+| `accepted_answers` | `photosynthesis\|photo synthesis\|photosythesis` |
+| `hint` | `Think about what "photo" means in Greek.` |
 
-```
-Anaphase|Prophase|Telophase|Metaphase
-```
-
----
-
-### `correct_order`
-
-**DragDrop only.** Pipe-delimited list of the **same items** in correct sequence.
-
-```
-Prophase|Metaphase|Anaphase|Telophase
-```
-
-`items` and `correct_order` must contain identical elements — the quiz will show an error if they differ.
+*What students see:* One blank. Any of the three spellings (or a fuzzy match) counts as correct. The hint appears only after an incorrect submission.
 
 ---
 
-### `feedback_correct` *(optional)*
+**Two blanks with partial credit**
 
-Text shown when the student answers correctly. Defaults to `Correct!`
+| Column | Value |
+|---|---|
+| `type` | `FillBlank` |
+| `question_id` | `FB-003` |
+| `question_text` | `Photosynthesis takes in {{blank}} and releases {{blank}}.` |
+| `accepted_answers` | `carbon dioxide\|CO2;oxygen\|O2` |
+| `partial_credit` | `TRUE` |
+| `case_sensitive` | `FALSE` |
 
-### `feedback_incorrect` *(optional)*
+*What students see:* Two inline blanks. With `partial_credit TRUE`, getting one blank right shows "(1 of 2 blanks correct)" and both blanks are individually colour-coded.
 
-Text shown when the student answers incorrectly. Defaults to `Review this topic and try again.`
-
----
-
-### `hint` *(optional, FillBlank only)*
-
-Shown below the question after any incorrect submission. Leave empty to show no hint.
-
----
-
-### `case_sensitive` *(optional, FillBlank only)*
-
-`TRUE` or `FALSE`. Defaults to `FALSE` (case-insensitive matching).
+The semicolon (`;`) separates the answer group for blank 1 from blank 2. The pipe (`|`) separates accepted synonyms within a group.
 
 ---
 
-### `partial_credit` *(optional, FillBlank only)*
+### Drag/Drop Ordering
 
-`TRUE` or `FALSE`. Applies when there are multiple blanks.
+**4-item example**
 
-- `TRUE` — each blank is scored independently; partial feedback is shown.
-- `FALSE` — all blanks must be correct for the question to count as correct.
+| Column | Value |
+|---|---|
+| `type` | `DragDrop` |
+| `question_id` | `DD-001` |
+| `question_text` | `Arrange the stages of mitosis in the correct order:` |
+| `items` | `Anaphase\|Prophase\|Telophase\|Metaphase` |
+| `correct_order` | `Prophase\|Metaphase\|Anaphase\|Telophase` |
+| `feedback_correct` | `Perfect! You correctly ordered all four stages of mitosis.` |
+| `feedback_incorrect` | `Not quite — review the sequence: Prophase → Metaphase → Anaphase → Telophase.` |
 
-Defaults to `FALSE`.
+*What students see:* A draggable list showing the items in the scrambled `items` order. After submitting, items in the correct position highlight green; items out of position highlight red. The correct order is shown below.
+
+**`items`** is the scrambled display order — this is what students see first.
+**`correct_order`** is the answer — it must contain exactly the same items, just in the right sequence.
 
 ---
 
-### `shuffle_options` *(optional, MultiChoice only)*
+## Common Mistakes
 
-`TRUE` or `FALSE`. If `TRUE`, option display order is randomized each load. Defaults to `FALSE`.
-
----
-
-## Tips
-
-- Wrap any field containing commas or quotation marks in double quotes:
-  `"Smith, John"` or `"She said ""hello"""`
-- Keep each CSV to 2–4 questions for the best student experience.
-- You can have as many CSV files as you like — each maps to a unique quiz URL.
-- Test your CSV locally before sharing with students (see `docs/FACULTY_GUIDE.md`).
+| Mistake | What happens | Fix |
+|---|---|---|
+| Using semicolons instead of commas as the CSV delimiter | The file fails to parse; all columns appear as one | Use commas to separate columns. Only use semicolons inside the `accepted_answers` field to separate blank groups. |
+| Extra spaces around pipe characters (`a \| b`) | `" b"` doesn't match `"b"` | Write pipes without surrounding spaces: `a\|b` |
+| `correct_order` items don't exactly match `items` spelling | Validation error: "items and correct_order must contain the same elements" | Copy-paste items from one field to the other, then reorder |
+| Blank rows between questions | Parser skips empty rows — questions still load, but avoid gaps for clarity | Delete any blank rows between data rows |
+| Field contains a comma | Parser splits the field incorrectly | Wrap the entire field value in double quotes: `"Smith, John"` |
+| `{{blank}}` typed incorrectly | The placeholder renders as literal text; no input appears | Use exactly `{{blank}}` — double curly braces, lowercase, no spaces |

@@ -1,97 +1,57 @@
 # Canvas Formative Assessment Tool
 
-A zero-server, zero-build quiz tool for Canvas LMS, hosted on GitHub Pages.
-Faculty add questions by editing CSV files directly on GitHub. Students get instant, color-coded feedback with unlimited retries.
-
----
+Interactive formative quiz activities for Canvas LMS, hosted on GitHub Pages.
+No servers. No accounts for students. No build steps.
 
 ## How it works
 
-```
-quiz.html?quiz=questions/your-topic/your-quiz.csv
-```
-
-The single `quiz.html` file fetches any CSV at runtime and renders an interactive formative activity. No backend, no accounts, no build step.
-
-**Supported question types:**
-
-| Type | Student experience |
-|---|---|
-| Multiple Choice | Click a radio button; one correct answer |
-| Fill in the Blank | Type into an inline blank; multiple accepted spellings |
-| Drag to Reorder | Drag items into the correct sequence |
-
----
-
-## One-time setup
-
-1. **Fork this repository** (or have IT create it from this template).
-2. Go to **Settings → Pages**, set source to `main` branch, root folder.
-3. GitHub will publish the tool at:
+1. A faculty member adds a CSV file to the `questions/` folder
+2. The quiz URL is:
    ```
-   https://<your-username>.github.io/<repo-name>/
+   https://[ORG].github.io/[REPO]/canvas-quiz/quiz.html?quiz=questions/path/file.csv
    ```
-4. Done — share quiz URLs with students.
+3. That URL is embedded in a Canvas Page as an iframe
+4. Students open the Page and take the quiz
 
----
+## Question types
 
-## Adding questions
+- **Multiple Choice** (2–4 options)
+- **Fill in the Blank** (single or multiple blanks, typo-tolerant matching)
+- **Drag/Drop Ordering**
 
-1. Create or upload a `.csv` file in the `questions/` folder.
-2. Use the header row from [`docs/CSV_FORMAT.md`](docs/CSV_FORMAT.md).
-3. Commit to `main`.
-4. Share the URL:
+## One-time admin setup
+
+1. Fork or clone this repo into your institution's GitHub organization
+2. **Settings → Pages → Source:** Deploy from branch → Branch: `main` → `/` (root) → Save
+3. Wait ~60 seconds, then test:
    ```
-   https://<your-username>.github.io/<repo-name>/quiz.html?quiz=questions/your-file.csv
+   https://[ORG].github.io/[REPO]/canvas-quiz/quiz.html?quiz=questions/example/sample-quiz.csv
    ```
-
-See [`questions/README.md`](questions/README.md) for a quick-start guide.
-
----
-
-## Embedding in Canvas
-
-Paste an `<iframe>` tag into any Canvas Page's HTML editor:
-
-```html
-<iframe
-  src="https://<your-username>.github.io/<repo-name>/quiz.html?quiz=questions/your-file.csv"
-  width="100%"
-  height="600"
-  style="border:none;"
-  title="Formative Assessment">
-</iframe>
-```
-
-Full instructions: [`docs/EMBED_INSTRUCTIONS.md`](docs/EMBED_INSTRUCTIONS.md)
-
----
+4. Share `docs/FACULTY_GUIDE.md` with faculty who want to add quizzes
 
 ## Repository structure
 
 ```
 canvas-quiz/
-├── quiz.html                        ← single-file quiz app (all HTML/CSS/JS)
-├── questions/
-│   ├── README.md                    ← how to add questions
-│   └── example/
-│       ├── sample-quiz.csv          ← one of each question type
-│       └── multichoice-only.csv     ← three MultiChoice questions
-├── docs/
-│   ├── CSV_FORMAT.md                ← every column explained
-│   ├── FACULTY_GUIDE.md             ← step-by-step faculty instructions
-│   └── EMBED_INSTRUCTIONS.md        ← Canvas iframe guide
-└── README.md                        ← this file
+└── quiz.html                  ← single-file quiz app (all HTML/CSS/JS)
+docs/
+├── CSV_FORMAT.md              ← complete column reference with examples
+├── FACULTY_GUIDE.md           ← step-by-step guide for faculty
+└── EMBED_INSTRUCTIONS.md      ← how to embed in a Canvas Page
+questions/
+├── README.md                  ← folder conventions and quick-start
+└── example/
+    ├── sample-quiz.csv        ← one of each question type
+    └── multichoice-only.csv   ← three MultiChoice questions
+README.md                      ← this file
 ```
 
----
-
-## Local development / testing
+## Local development
 
 Browsers block `fetch()` on `file://` URLs, so you need a local server:
 
 ```bash
-# Python (no install needed on macOS/Linux)
+# Python (built into macOS/Linux)
 python3 -m http.server 8080
 
 # Node.js
@@ -100,13 +60,21 @@ npx serve .
 
 Then open:
 ```
-http://localhost:8080/quiz.html?quiz=questions/example/sample-quiz.csv
+http://localhost:8080/canvas-quiz/quiz.html?quiz=questions/example/sample-quiz.csv
 ```
 
----
+## Privacy
+
+- No student data is collected or stored anywhere outside the student's browser
+- Answers live in `sessionStorage` only — cleared when the browser tab closes
+- No analytics, no tracking, no login required for students
+- Do not put student names or any identifying information in CSV files
 
 ## Documentation
 
-- [`docs/CSV_FORMAT.md`](docs/CSV_FORMAT.md) — complete column-by-column reference
-- [`docs/FACULTY_GUIDE.md`](docs/FACULTY_GUIDE.md) — authoring walkthrough and troubleshooting
-- [`docs/EMBED_INSTRUCTIONS.md`](docs/EMBED_INSTRUCTIONS.md) — Canvas embedding instructions
+| File | Purpose |
+|------|---------|
+| [`docs/CSV_FORMAT.md`](docs/CSV_FORMAT.md) | Every column explained with complete examples |
+| [`docs/FACULTY_GUIDE.md`](docs/FACULTY_GUIDE.md) | Adding questions and sharing quiz URLs |
+| [`docs/EMBED_INSTRUCTIONS.md`](docs/EMBED_INSTRUCTIONS.md) | Embedding in a Canvas Page |
+| [`questions/README.md`](questions/README.md) | Folder and file naming conventions |

@@ -1,77 +1,84 @@
-# Embedding in Canvas
+# Embedding a Quiz in Canvas
 
-There are two ways to get the quiz into Canvas. Both result in the quiz appearing inline on the page — no new tab required.
+## Option 1: Use Canvas's Embed dialog (simplest)
 
----
-
-## Method 1 — External Tool / Redirect (simplest)
-
-1. In your Canvas course, go to the module where you want the quiz.
-2. Click **+** → **External URL**.
+1. Edit a Canvas Page.
+2. In the Rich Content Editor toolbar: **Insert → Media → URL**
+   *(wording varies by Canvas version — look for "Embed" or "Media" in the toolbar)*
 3. Paste your quiz URL:
    ```
-   https://yourusername.github.io/repo-name/quiz.html?quiz=questions/week3/plant-cells.csv
+   https://[ORG].github.io/[REPO]/canvas-quiz/quiz.html?quiz=questions/[path].csv
    ```
-4. Check **Load in a new tab** *or* leave it unchecked for inline embedding (behavior depends on your Canvas instance settings).
-5. Save.
+4. Set dimensions: width `100%`, height `600`.
+5. Save, then use **Student View** to preview.
+
+If that option isn't available in your toolbar, use Option 2.
 
 ---
 
-## Method 2 — HTML `<iframe>` in a Canvas Page (recommended for inline display)
+## Option 2: Paste HTML directly
 
-This gives you full control over the embed and works in any Canvas instance.
-
-### Step-by-step
-
-1. Open or create a **Canvas Page** (Pages → + Page).
-2. In the Rich Content Editor toolbar, click the `</>` (HTML editor) button
-   *(in newer Canvas versions: click the three-dot menu → "Switch to HTML editor")*.
-3. Paste this code, replacing the `src` URL with your quiz URL:
+1. Edit a Canvas Page.
+2. Click the **`</>`** (HTML Editor) button in the toolbar.
+   *(In newer Canvas: click the three-dot menu → "Switch to HTML editor")*
+3. Find where you want the quiz in the HTML and paste:
 
 ```html
 <iframe
-  src="https://yourusername.github.io/repo-name/quiz.html?quiz=questions/week3/plant-cells.csv"
+  src="https://[ORG].github.io/[REPO]/canvas-quiz/quiz.html?quiz=questions/[path].csv"
   width="100%"
   height="600"
-  style="border:none; border-radius:8px;"
-  title="Formative Assessment"
+  style="border: none;"
+  title="[Your Quiz Title — describe it for screen readers]"
   allowfullscreen>
 </iframe>
 ```
 
-4. Switch back to the visual editor to preview, then **Save**.
-
-### Adjusting the height
-
-- Most 3-question quizzes display well at `height="600"`.
-- For 4 questions or long feedback text, try `height="750"` or `height="900"`.
-- You can also set `height="800px"` in the `style` attribute instead of the `height` attribute — either works.
+4. Replace the `src` URL with your actual quiz URL.
+5. Replace the `title` attribute with a descriptive label (e.g., `"Cell Biology Check — Week 3"`).
+6. Switch back to the visual editor to confirm it looks right.
+7. Save, then preview with **Student View**.
 
 ---
 
-## Troubleshooting embeds
+## Adjusting height
+
+600px works for most 2–4 question quizzes. Adjust as needed:
+
+| Quiz length | Recommended height |
+|---|---|
+| Short quiz (2 questions) | `500` |
+| Standard (3–4 questions) | `600`–`700` |
+| Longer quiz (5+ questions) | `800`+ |
+
+Preview in Student View to confirm nothing is cut off at the bottom.
+
+---
+
+## Checking it works
+
+After publishing, use Canvas **Student View** to:
+
+- Confirm the quiz loads inside the page (not a blank box)
+- Interact with all questions and click **Check My Answers**
+- Verify feedback highlights appear correctly
+- Confirm the **Try Again** button resets the quiz
+
+---
+
+## Troubleshooting
 
 | Problem | Fix |
-|---|---|
-| Quiz shows a blank white box | Your institution may block iframes from external domains. Contact your Canvas admin to allowlist your GitHub Pages domain. |
-| "Refused to connect" error in DevTools | Same as above — CSP/X-Frame-Options block. See note below. |
-| Iframe too short, quiz is cut off | Increase the `height` value. |
-| Quiz doesn't scroll inside iframe | Add `overflow: auto` to the iframe's style, or increase height. |
+|---------|-----|
+| Blank white box appears | Your institution may block iframes from external domains. Contact your Canvas admin to allowlist your GitHub Pages domain (e.g., `https://myuniversity.github.io`). |
+| "Refused to connect" in browser DevTools | Same cause — Content Security Policy block. Ask your Canvas admin to add the GitHub Pages domain to Canvas Admin → Security → Allowed Domains. |
+| Quiz is cut off at the bottom | Increase the `height` value in the iframe tag. |
+| Quiz doesn't scroll inside the iframe | Increase `height` further, or add `overflow: auto;` to the iframe's `style` attribute. |
+| Quiz loads in a new tab instead of inline | Remove `target="_blank"` if present, or try Option 2 (raw iframe HTML) instead of the Canvas embed dialog. |
 
 ### Note on Canvas iframe restrictions
 
-Some Canvas instances (especially those using strict Content Security Policies) may block iframes pointing to external domains. If your institution has this restriction, ask your Canvas administrator to add your GitHub Pages domain (`https://yourusername.github.io`) to the **Allowed Domains** list in Canvas Admin → Security.
+Some Canvas instances block iframes pointing to external domains. If you run into this:
 
-Alternatively, you can host the repo under a custom domain (GitHub Pages supports this) and request that domain be allowlisted.
-
----
-
-## Sharing as a direct link (no iframe)
-
-If embedding is blocked, you can still share the quiz as a plain hyperlink in Canvas:
-
-1. Open an Assignment, Discussion, or Announcement.
-2. Highlight link text (e.g., "Click here for the Cell Biology Check").
-3. Click the link icon and paste your quiz URL.
-
-Students click the link and the quiz opens in a new tab.
+1. Ask your Canvas administrator to allowlist your GitHub Pages domain in **Canvas Admin → Security → Allowed Domains**.
+2. Alternatively, share the quiz as a plain hyperlink — students click it and the quiz opens in a new tab. This works in any Canvas instance without any admin changes.
